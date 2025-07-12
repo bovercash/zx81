@@ -150,7 +150,7 @@ ProgramStart:
 	LD (player.direction), A
 	
 	; set the current map
-	LD HL, MAP_ONE
+	LD HL, MAP_TWO
 	LD (CURRENT_MAP), HL 
 
 	; Setup the Nuts for the Game
@@ -184,10 +184,8 @@ _KeyboardScanLoop
 	CP _A				
 	JP Z, HandleKeyDown
 	
-	CP _Z	; Z Key Exits the Game
-	JP Z, ProgramEnd
-	CP _R
-	JP Z, ResetPlayerPosition
+	CP _W
+	JP Z, HandleDigKey
 	JP MainLoopCleanup	; Nothing pressed; delay and loop
 
 	HandleKeyLeft:
@@ -285,7 +283,6 @@ _KeyboardScanLoop
 
 	LD A, $00
 	LD (ScreenInitFlag), A	; tell the screen to redraw too
-
 	JP MainLoopUpdate
 
 DrawScreen:		; Draw the current map to the screen
@@ -309,7 +306,6 @@ _drawScreenHeaderLoop
 
 _drawScreenMap
 	CALL DrawCurrentMap
-	
 
 MainLoopUpdate:
 	; Perform screen and state updates
@@ -347,6 +343,8 @@ MainLoopCleanup
 	LD A, (ScreenInitFlag)
 	OR A
 	JP Z, DrawScreen
+
+	CALL DrawStatusLine
 
 	CALL Delay	 
 
@@ -476,6 +474,24 @@ RandomizeSeed:
 	POP BC
 	POP AF 
 	RET
+; End Function
+
+; -------------------------------------------------------------
+; Function: Divide
+; A / B
+; Clobers A, B
+; Result is in C
+; Remainder is in A
+Divide:
+	LD C, 0
+_DivideLoop:
+	SUB B 		; A - B
+	JP M, _DivideResult
+	INC C 
+	JR _DivideLoop
+_DivideResult
+	ADD A, B
+	RET 
 ; End Function
 
 ; -------------------------------------------------------------
@@ -615,6 +631,9 @@ SCREEN_OFFSET_MAP:
 	 DB $74, $02	; [20]= 628
 	 DB $95, $02	; [21]= 661
 	 DB $B6, $02	; [22]= 694
+	 DB $D7, $02	; [23]= 727
+	 DB	$F8, $02	; [24]= 760
+	 DB	$19, $03	; [35]= 793
 	 
 SCREEN_OFFSET_INDEX:	; Current Screen Offset
 	DB $01, $01	; Reserve 2 Bytes for Screen Offset Index
@@ -660,10 +679,10 @@ GetMapTile:
 	ADD HL, DE
 	LD A, (HL)
 
-	SRA A
-	SRA A
-	SRA A
-	SRA A
+	SRL A
+	SRL A
+	SRL A
+	SRL A
 	RET	
 
 	_ReturnLowerNibble
@@ -700,10 +719,10 @@ DrawCurrentMap:
 
 	; Load the first Nibble
 	PUSH AF
-	SRA A			; Shift Right 4 Bits to isolate the nibble
-	SRA A
-	SRA A
-	SRA A	
+	SRL A			; Shift Right 4 Bits to isolate the nibble
+	SRL A
+	SRL A
+	SRL A
 
 	PUSH HL
 	LD HL, TILE_MAP		; Load the Tile Map
@@ -797,6 +816,151 @@ _splashEnd
 	JP MainLoop
 ; End Subroutine
 
+; -------------------------------------------------------------
+; Subroutine: HandleDigKey
+HandleDigKey:
+	; Determin the target dig spot based on location and direction
+	LD A, (player.y)
+	LD B, A 
+	LD A, (player.x)
+	LD C, A 
+
+	LD A, (player.direction)
+	CP _RIGHT
+	JR Z, _DigRight
+	CP _LEFT
+	JR Z, _DigLeft 
+	CP _UP 
+	JR Z, _DigUp 
+	JR _DigDown
+
+	_DigRight:
+		LD A, C 
+		CP $1F
+		JR Z, _ContinueToMainLoop
+
+		INC A
+		LD C, A 
+		JR _DigForNut
+
+	_DigLeft:
+		LD A, C 
+		CP 0
+		JR Z, _ContinueToMainLoop
+
+		DEC A
+		LD C, A 
+		JR _DigForNut
+
+	_DigUp:
+		LD A, B
+		CP 1
+		JR Z, _ContinueToMainLoop
+
+		DEC A
+		LD B, A 
+		JR _DigForNut
+
+	_DigDown:
+		LD A, B
+		CP $15
+		JR Z, _ContinueToMainLoop
+
+		INC A
+		LD B, A 
+
+	_DigForNut:		; BC Contains Dig Y,X
+		LD A, 0		; index counter
+		LD HL, nuts
+	_DigForNutLoop
+		PUSH AF
+		PUSH BC
+		LD A, (HL)	; Y Position
+		SUB B
+		LD B, A 
+		INC HL
+		LD A, (HL)
+		SUB C 
+		OR B 		; If B and C are both 0, we have a hit
+		JP Z, _FoundNut
+		POP BC 
+		POP AF 
+		CP 9 	; End of the loop
+		JR Z, _ContinueToMainLoop 
+
+		INC A
+		INC HL
+
+		JR _DigForNutLoop
+
+	_FoundNut		; HL contains the position of the nut
+	POP BC 
+
+	;; erase the nut
+	LD A, $08
+	CALL PrintCharacterAt
+
+	;; increase score
+	LD A, (player.score)
+	INC A 
+	LD (player.score), A 
+
+	POP AF 
+	;; Change Nut Position
+	CALL RandomizeNutPosition
+
+	_ContinueToMainLoop
+	JP MainLoopUpdate
+; End Subroutine
+
+; -------------------------------------------------------------
+; Function: DrawStatusLine
+; Prints Score and Time
+DrawStatusLine:
+	;; Status line is at the bottom of the screen
+	LD HL, (D_FILE)
+	LD B, $02
+	LD C, $B6 
+	ADD HL, BC 
+
+	LD DE, scoreLabel
+	_DrawStatusLineScoreLoop
+	LD A, (DE)
+	CP $FF
+	JR Z, _DrawStatusLineDone
+	LD (HL), A
+	INC HL
+	INC DE 
+	JR _DrawStatusLineScoreLoop
+	_DrawStatusLineDone
+
+	;; Print the Player Score
+	LD A, (player.score)
+	LD B, 100
+	CALL Divide			; 100's Place
+	PUSH AF 
+	LD A, C 
+	ADD A, $1C
+	LD (HL), A
+	POP AF
+
+	INC HL 
+	LD B, 10 
+	CALL Divide			; 10's Place
+	PUSH AF 
+	LD A, C 
+	ADD A, $1C
+	LD (HL), A
+	POP AF 
+
+	INC HL  
+	ADD A, $1C 			; 1's Place
+	LD (HL), A 
+
+	RET
+; End Function
+
+
 ; -- Splash Screen --------------------------------------------
 SPLASH_SCREEN
 	DB	$76,$00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
@@ -839,6 +1003,12 @@ TILE_MAP	DB $00	; [0] Empty Tile
 			DB $85	; [3] Right
 			DB $03	; [4] Bottom 
 			DB $08	; [5] Gray Block
+			DB $06	; [6] /
+			DB $86	; [7] \
+			DB $80	; [8] Solid Tile
+			DB $02	; [9] .
+			DB $82	; [A] '.
+			DB $0A	; [B] ^
 
 ; Maps are made up of 32 nibbles (16 Bytes) by 20 rows 
 MAP_ONE
@@ -863,6 +1033,30 @@ MAP_ONE
 	DB $20, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $03,_NL
 	DB $44, $44, $44, $44, $44, $44, $44, $44, $44, $44, $44, $44, $44, $44, $44, $44,_NL
 	DB $FF
+
+MAP_TWO
+	DB $11, $11, $11, $11, $11, $11, $11, $11, $11, $11, $11, $11, $11, $11, $11, $11,_NL
+	DB $20, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $03,_NL
+	DB $20, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $03,_NL
+	DB $20, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $03,_NL
+	DB $20, $00, $0A, $64, $47, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $03,_NL
+	DB $20, $00, $65, $55, $55, $20, $00, $00, $00, $00, $00, $00, $0A, $AA, $00, $03,_NL
+	DB $20, $00, $22, $55, $55, $60, $00, $00, $00, $00, $00, $06, $45, $55, $70, $03,_NL
+	DB $20, $00, $97, $55, $53, $00, $00, $00, $00, $00, $00, $02, $55, $55, $30, $03,_NL
+	DB $20, $00, $00, $44, $66, $00, $00, $00, $00, $00, $00, $07, $65, $55, $57, $03,_NL
+	DB $20, $00, $00, $05, $00, $00, $0A, $AA, $A0, $00, $00, $00, $66, $47, $56, $03,_NL
+	DB $20, $00, $00, $05, $00, $00, $65, $55, $5A, $00, $00, $00, $0B, $5B, $40, $03,_NL
+	DB $20, $00, $00, $05, $00, $00, $25, $55, $55, $70, $00, $00, $00, $50, $00, $03,_NL
+	DB $20, $00, $00, $00, $00, $00, $25, $65, $55, $52, $00, $00, $00, $50, $00, $03,_NL
+	DB $20, $00, $00, $00, $00, $00, $94, $A6, $56, $60, $00, $00, $00, $50, $00, $03,_NL
+	DB $20, $00, $00, $00, $00, $00, $00, $00, $50, $00, $00, $00, $00, $00, $00, $03,_NL
+	DB $20, $00, $00, $00, $00, $00, $00, $00, $50, $00, $00, $00, $00, $00, $00, $03,_NL
+	DB $20, $00, $00, $00, $00, $00, $00, $00, $50, $00, $00, $00, $00, $00, $00, $03,_NL
+	DB $20, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $03,_NL
+	DB $20, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $03,_NL
+	DB $44, $44, $44, $44, $44, $44, $44, $44, $44, $44, $44, $44, $44, $44, $44, $44,_NL
+	DB $FF
+
 	RET
 ; end of machine code
 
