@@ -145,6 +145,14 @@ ProgramStart:
 	LD (player.x), A
 	LD (player.y), A
 
+	; zero the score
+	LD A, 0
+	LD (player.score), A 
+
+	; set the timer
+	LD A, $E1
+	LD (timer), A 
+
 	; initial player direction
 	LD A, _RIGHT
 	LD (player.direction), A
@@ -152,6 +160,10 @@ ProgramStart:
 	; set the current map
 	LD HL, MAP_TWO
 	LD (CURRENT_MAP), HL 
+
+	; clear the screen initialized flag
+	LD A, 0 
+	LD (ScreenInitFlag), A 
 
 	; Setup the Nuts for the Game
 	CALL InitializeNuts 
@@ -346,7 +358,23 @@ MainLoopCleanup
 
 	CALL DrawStatusLine
 
-	CALL Delay	 
+	CALL Delay	
+
+	;; Handle Timer
+	LD A, (tickCount)
+	DEC A 
+	JR Z, _countDownTimer
+	LD (tickCount), A 
+	JP MainLoop
+
+	_countDownTimer
+	LD A, TICKS_PER_SECOND
+	LD (tickCount), A
+
+	LD A, (timer)
+	DEC A
+	JP Z, GameOver
+	LD (timer), A   
 
 	JP MainLoop		; loop forever
 
@@ -355,6 +383,8 @@ ProgramEnd
 
 ; -------------------------------------------------------------
 ; Program Constants
+
+TICKS_PER_SECOND EQU 7	; Adjust for timing
 
 ;; Directions
 _RIGHT	EQU 0
@@ -377,7 +407,8 @@ player.prevX		DB 0	; Previous Position
 player.prevY		DB 0	; Previous Position
 player.score 		DB 0	; Current Score
 
-timer				DW 0	; Time Remaining
+tickCount			DB TICKS_PER_SECOND
+timer				DB 0	; Time Remaining
 
 ; Nuts Array
 nuts				DS 20	; 10 nuts, 2 bytes each (y and x postion)
@@ -468,7 +499,8 @@ RandomizeSeed:
 	PUSH HL
 	LD BC, $200		; Give the CPU time to do something
 	CALL DelayFor	; and generate a new random value
-	CALL RAND
+	LD BC, (FRAMES)
+	LD (SEED), BC   ; Copy Frames
 	POP HL
 	POP DE
 	POP BC
@@ -491,6 +523,14 @@ _DivideLoop:
 	JR _DivideLoop
 _DivideResult
 	ADD A, B
+	RET 
+; End Function
+
+; -------------------------------------------------------------
+; Function: ABS
+; Make value in A = |A|
+ABS:
+	RES 7, A 
 	RET 
 ; End Function
 
@@ -927,19 +967,20 @@ DrawStatusLine:
 	_DrawStatusLineScoreLoop
 	LD A, (DE)
 	CP $FF
-	JR Z, _DrawStatusLineDone
+	JR Z, _DrawStatusLineScoreDone
 	LD (HL), A
 	INC HL
 	INC DE 
 	JR _DrawStatusLineScoreLoop
-	_DrawStatusLineDone
+	_DrawStatusLineScoreDone
 
 	;; Print the Player Score
 	LD A, (player.score)
 	LD B, 100
 	CALL Divide			; 100's Place
 	PUSH AF 
-	LD A, C 
+	LD A, C
+	CALL ABS  
 	ADD A, $1C
 	LD (HL), A
 	POP AF
@@ -949,16 +990,69 @@ DrawStatusLine:
 	CALL Divide			; 10's Place
 	PUSH AF 
 	LD A, C 
+	CALL ABS 
 	ADD A, $1C
 	LD (HL), A
 	POP AF 
 
 	INC HL  
+	CALL ABS 
+	ADD A, $1C 			; 1's Place
+	LD (HL), A 
+
+	;; draw the timer value
+	LD HL, (D_FILE)
+	LD B, $02
+	LD C, $C6 
+	ADD HL, BC 
+
+	LD DE, timeLabel
+	_DrawStatusLineTimerLoop
+	LD A, (DE)
+	CP $FF
+	JR Z, _DrawStatusLineTimerDone
+	LD (HL), A
+	INC HL
+	INC DE 
+	JR _DrawStatusLineTimerLoop
+	_DrawStatusLineTimerDone
+
+	;; Print the current timer value
+	LD A, (timer)
+	LD B, 100
+	CALL Divide			; 100's Place
+	PUSH AF 
+	LD A, C
+	CALL ABS  
+	ADD A, $1C
+	LD (HL), A
+	POP AF
+
+	INC HL 
+	LD B, 10 
+	CALL Divide			; 10's Place
+	PUSH AF 
+	LD A, C 
+	CALL ABS 
+	ADD A, $1C
+	LD (HL), A
+	POP AF 
+
+	INC HL  
+	CALL ABS 
 	ADD A, $1C 			; 1's Place
 	LD (HL), A 
 
 	RET
 ; End Function
+
+; -------------------------------------------------------------
+; Subroutine: GameOver
+GameOver:
+
+
+	; For now we're going to do nothing
+	JP ProgramStart 
 
 
 ; -- Splash Screen --------------------------------------------
