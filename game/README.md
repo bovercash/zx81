@@ -18,7 +18,7 @@ front of</strong> the nut (the "N" characters).  As you move, your direction is 
 
 ![GamePlay](/game/dignut_gameplay.png "Game Play")
 
-![Instructions](/game/gitnut_instructions.png "Instructions")
+![Instructions](/game/dignut_instructions.png "Instructions")
 
 This game will play on real hardware, too!
 
