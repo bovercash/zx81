@@ -23,5 +23,5 @@ pasmo -v -1 file.asm file.p
 ##### Resources
 
 - Thunor - mctemplate [http://www.nonowt.com/magfold/mmcode/thunor.html](http://www.nonowt.com/magfold/mmcode/thunor.html)
-- (An Assembly Listing of the Operating System of the ZX81 ROM)[https://raw.githubusercontent.com/andrivet/zx81-typescript-emulator/refs/heads/master/Documents/Assembly%20Listing%20of%20the%20Operating%20System%20of%20the%20ZX81%20ROM.txt]
+- [An Assembly Listing of the Operating System of the ZX81 ROM](https://raw.githubusercontent.com/andrivet/zx81-typescript-emulator/refs/heads/master/Documents/Assembly%20Listing%20of%20the%20Operating%20System%20of%20the%20ZX81%20ROM.txt)
 - Assemply Language on the ZX81 - An Updated Getting Started Guide by Timothy Swenson

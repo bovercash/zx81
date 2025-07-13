@@ -150,7 +150,7 @@ ProgramStart:
 	LD (player.score), A 
 
 	; set the timer
-	LD A, $E1
+	LD A, $64		; 100 seconds
 	LD (timer), A 
 
 	; initial player direction
@@ -171,9 +171,9 @@ ProgramStart:
 MainLoop:
 
 	; Check the Splash Screen
-	LD A, (ShowSpashFlag)
-	CP 1							; If ShowSpashFlag == 1, Show the Splash Screen
-	JP Z, HandleSpashScreen			; Kick out to the splash screen
+	LD A, (ShowSplashFlag)
+	CP 1							; If ShowSplashFlag == 1, Show the Splash Screen
+	JP Z, HandleSplashScreen			; Kick out to the splash screen
 
 	; check keys
 _KeyboardScanLoop
@@ -396,7 +396,7 @@ _UP		EQU 3
 ; Global Variables
 
 ; Screen State Flags
-ShowSpashFlag		DB 1	; Show the Spash Screen on Startup
+ShowSplashFlag		DB 1	; Show the Splash Screen on Startup
 ScreenInitFlag		DB 0	; Track if the screen has been initialized
 
 ; Player Construct
@@ -417,6 +417,18 @@ nuts				DS 20	; 10 nuts, 2 bytes each (y and x postion)
 ; -- Text and Labels ------------------------------------------
 headerMessage:
 	DB _D,_I,_G,_N,_U,_T
+	DB $FF
+instructionsTitle:
+	DB _I,_N,_S,_T,_R,_U,_C,_T,_I,_O,_N,_S
+	DB $FF
+instructionsMessage:
+	DB _D,_I,_G,_SPC,_F,_O,_R,_SPC,_N,_U,_T,_S,_SPC,_B,_E,_F,_O,_R,_E,_SPC,_T,_I,_M,_E,$FF
+	DB _R,_U,_N,_S,_SPC,_O,_U,_T,$FF 
+	DB $FF 
+instructionsKeys:
+	DB _U,_P,_SLS,_D,_O,_W,_N,$1B,$1B,$1B,  $1B,$1B,$1B,$1B,$1B,_Q,_SLS,_A,$FF
+	DB _L,_E,_F,_T,_SLS,_R,_I,_G,_H,_T,     $1B,$1B,$1B,$1B,$1B,_O,_SLS,_P,$FF
+	DB _D,_I,_G,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,_W,$FF
 	DB $FF
 scoreLabel:
 	DB _S,_C,_O,_R,_E,_CLN,_SPC
@@ -815,7 +827,7 @@ DrawSplashScreen:
 	LD E, L
 	LD HL, SPLASH_SCREEN
 _DrawSplashScreenByte	
-	LD A, (HL)			; read spash screen byte
+	LD A, (HL)			; read splash screen byte
 	CP $FF				; Check if I'm at the end
 	RET Z
 	LD (DE), A
@@ -825,36 +837,116 @@ _DrawSplashScreenByte
 ; End Function
 
 ; -------------------------------------------------------------
-; Subroutine: HandleSpashScreen
+; Subroutine: HandleSplashScreen
 ; Draw the splash screen and block
 ; Clobbers: All
-; Updates ShowSpashFlag
-HandleSpashScreen:
+; Updates ShowSplashFlag
+HandleSplashScreen:
 	; Draw the Slash Screen
 	CALL DrawSplashScreen
 
 	XOR A
-_spashLoop   
+_splashLoop   
 	CALL KSCAN
     LD B, H
     LD C, L
     LD D, C
 	INC D
 	LD A, 01H
-	JR Z, _spashLoop
+	JR Z, _splashLoop
 	CALL DECODE
 	LD A, (HL)
 
 	CP $2A				; E Key
 	JR Z, _splashEnd
-	JR _spashLoop		; Loop Waiting for user to continue
+	JR _splashLoop		; Loop Waiting for user to continue
 
 _splashEnd
 	CALL CLS			; Clear the screen
 	LD A, 0
-	LD (ShowSpashFlag), A
-	JP MainLoop
+	LD (ShowSplashFlag), A
+	JP ShowInstructions
 ; End Subroutine
+
+; -------------------------------------------------------------
+; Subcroutine: ShowInstructions
+ShowInstructions:
+	LD HL, (D_FILE)
+	LD B, $00
+	LD C, $09
+	ADD HL, BC
+
+	LD DE, instructionsTitle 
+	_showInstructionsTitleLoop
+	LD A, (DE)
+	CP $FF 
+	JR Z, _showInstructionsTitleDone
+	LD (HL), A 
+	INC HL
+	INC DE 
+	JR _showInstructionsTitleLoop
+
+	_showInstructionsTitleDone
+	LD HL, (D_FILE)
+	LD B, $00
+	LD C, $88 
+	ADD HL, BC 
+	LD (D_FILE_INDEX), HL
+
+	LD DE, instructionsMessage
+	_printInstructionLoop
+	LD A, (DE)
+	CP $FF
+	JR Z, _printNextInstruction
+	LD (HL), A
+	INC HL
+	INC DE 
+	JR _printInstructionLoop
+
+	_printNextInstruction
+	LD HL, (D_FILE_INDEX)
+	LD B, 0
+	LD C, $21		; Next Line
+	ADD HL, BC 
+	LD (D_FILE_INDEX), HL	
+	INC DE 		; Next instruction
+	LD A, (DE)
+	CP $FF 
+	JP NZ, _printInstructionLoop;
+
+	LD HL, (D_FILE)
+	LD B, $01
+	LD C, $72
+	ADD HL, BC 
+	LD (D_FILE_INDEX), HL	
+
+	LD DE, instructionsKeys
+	_printInstructionKeysLoop
+	LD A, (DE)
+	CP $FF
+	JR Z, _printNextInstructionKey
+	LD (HL), A
+	INC HL
+	INC DE 
+	JR _printInstructionKeysLoop
+
+	_printNextInstructionKey
+	LD HL, (D_FILE_INDEX)
+	LD B, 0 
+	LD C, $21		; Next Line
+	ADD HL, BC 
+	LD (D_FILE_INDEX), HL	
+	INC DE 		; Next instruction
+	LD A, (DE)
+	CP $FF 
+	JP NZ, _printInstructionKeysLoop;
+	
+
+	CALL WaitForAnyKey
+
+	CALL CLS
+	JP MainLoop
+; End Subrouting
 
 ; -------------------------------------------------------------
 ; Subroutine: HandleDigKey
@@ -1049,11 +1141,92 @@ DrawStatusLine:
 ; -------------------------------------------------------------
 ; Subroutine: GameOver
 GameOver:
+	CALL CLS 
 
+	;; Status line is at the bottom of the screen
+	LD HL, (D_FILE)
+	LD B, $01
+	LD C, $15 
+	ADD HL, BC 
 
-	; For now we're going to do nothing
+	LD DE, gameOverMessage
+	_GameOverMessageLoop
+	LD A, (DE)
+	CP $FF
+	JR Z, _GameOverMessageDone
+	LD (HL), A
+	INC HL
+	INC DE 
+	JR _GameOverMessageLoop
+	_GameOverMessageDone
+
+	LD HL, (D_FILE)
+	LD B, $01
+	LD C, $36 
+	ADD HL, BC 
+
+	LD DE, scoreLabel
+	_GameOverScoreLabelLoop
+	LD A, (DE)
+	CP $FF
+	JR Z, _GameOverScoreLabelDone
+	LD (HL), A
+	INC HL
+	INC DE 
+	JR _GameOverScoreLabelLoop
+	_GameOverScoreLabelDone
+
+	;; Print the Player Score
+	LD A, (player.score)
+	LD B, 100
+	CALL Divide			; 100's Place
+	PUSH AF 
+	LD A, C
+	CALL ABS  
+	ADD A, $1C
+	LD (HL), A
+	POP AF
+
+	INC HL 
+	LD B, 10 
+	CALL Divide			; 10's Place
+	PUSH AF 
+	LD A, C 
+	CALL ABS 
+	ADD A, $1C
+	LD (HL), A
+	POP AF 
+
+	INC HL  
+	CALL ABS 
+	ADD A, $1C 			; 1's Place
+	LD (HL), A 
+
+	CALL WaitForAnyKey
+
+	; Restart the Game
 	JP ProgramStart 
 
+; -------------------------------------------------------------
+; Function: WaitForAnyKey
+; Pause and wait for any key to be pressed
+WaitForAnyKey:
+	; Wait for ~1 second
+	LD BC, $5A00 
+	CALL Delay
+
+	XOR A
+_WaitForAnyKeyLoop   
+	CALL KSCAN
+    LD B, H
+    LD C, L
+    LD D, C
+	INC D
+	LD A, 01H
+	JR Z, _WaitForAnyKeyLoop
+
+	RET
+; End Function
 
 ; -- Splash Screen --------------------------------------------
 SPLASH_SCREEN
